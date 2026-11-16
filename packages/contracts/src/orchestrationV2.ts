@@ -3830,6 +3830,7 @@ export const ORCHESTRATION_V2_WS_METHODS = {
   getWorktreeThreadIds: "orchestration.getWorktreeThreadIds",
   getOlderSettledThreads: "orchestration.getOlderSettledThreads",
   getThreadProjection: "orchestration.getThreadProjection",
+  getThreadUsage: "orchestration.getThreadUsage",
   getWorkflowScript: "orchestration.getWorkflowScript",
   getNativeChildWork: "orchestration.getNativeChildWork",
   stopWorkflow: "orchestration.stopWorkflow",
@@ -3929,6 +3930,51 @@ export const OrchestrationV2GetThreadProjectionInput = Schema.Struct({
 });
 export type OrchestrationV2GetThreadProjectionInput =
   typeof OrchestrationV2GetThreadProjectionInput.Type;
+
+export const OrchestrationV2GetThreadUsageInput = Schema.Struct({
+  threadId: ThreadId,
+});
+export type OrchestrationV2GetThreadUsageInput = typeof OrchestrationV2GetThreadUsageInput.Type;
+
+/** The inputs `deriveLatestContextWindowSnapshot` reads, without the thread's turns or items. */
+export const OrchestrationV2ThreadUsageBucket = Schema.Struct({
+  turnCount: NonNegativeInt,
+  inputTokens: NonNegativeInt,
+  cachedInputTokens: NonNegativeInt,
+  outputTokens: NonNegativeInt,
+});
+
+export const OrchestrationV2ThreadUsage = Schema.Struct({
+  threadId: ThreadId,
+  providerThread: Schema.NullOr(
+    Schema.Struct({
+      id: ProviderThreadId,
+      contextUsage: Schema.NullOr(ThreadTokenUsageSnapshot),
+      updatedAt: Schema.DateTimeUtc,
+    }),
+  ),
+  latestTurnTokenUsage: Schema.NullOr(OrchestrationV2ProviderTurnTokenUsage),
+  /**
+   * Sums over every provider turn of the thread that reported usage. Input includes context
+   * re-sent on each model request, so this is tokens processed, not tokens billed.
+   */
+  totals: Schema.NullOr(OrchestrationV2ThreadUsageBucket),
+  /** Same sums split by the provider instance (account) that ran each turn, then by model. */
+  byAccount: Schema.Array(
+    Schema.Struct({
+      ...OrchestrationV2ThreadUsageBucket.fields,
+      providerInstanceId: Schema.NullOr(ProviderInstanceId),
+      label: Schema.String,
+      models: Schema.Array(
+        Schema.Struct({
+          ...OrchestrationV2ThreadUsageBucket.fields,
+          model: Schema.NullOr(TrimmedNonEmptyString),
+        }),
+      ),
+    }),
+  ),
+});
+export type OrchestrationV2ThreadUsage = typeof OrchestrationV2ThreadUsage.Type;
 
 export const OrchestrationV2SubscribeShellInput = Schema.Struct({
   afterSequence: Schema.optionalKey(NonNegativeInt),
@@ -4526,6 +4572,10 @@ export const OrchestrationV2RpcSchemas = {
   getThreadProjection: {
     input: OrchestrationV2GetThreadProjectionInput,
     output: OrchestrationV2ThreadProjection,
+  },
+  getThreadUsage: {
+    input: OrchestrationV2GetThreadUsageInput,
+    output: OrchestrationV2ThreadUsage,
   },
   stopWorkflow: {
     input: OrchestrationV2StopWorkflowInput,

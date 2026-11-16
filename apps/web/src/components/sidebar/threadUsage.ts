@@ -1,0 +1,97 @@
+import type { OrchestrationV2ThreadUsage } from "@t3tools/contracts";
+import { formatModelSlugName } from "@t3tools/shared/model";
+
+import { formatContextWindowTokens } from "~/lib/contextWindow";
+
+export interface ThreadUsageRow {
+  readonly label: string;
+  readonly value: string;
+}
+
+export interface ThreadUsageModelLine {
+  readonly name: string;
+  readonly info: string;
+}
+
+export interface ThreadUsageAccount {
+  readonly name: string;
+  readonly models: ReadonlyArray<ThreadUsageModelLine>;
+}
+
+/**
+ * Rows for the sidebar hover card. Empty when the thread has no usage to show,
+ * so the card renders without a usage block. Cost is not included because
+ * `orchestration.getThreadUsage` does not return it.
+ */
+export function deriveThreadUsageRows(
+  usage: OrchestrationV2ThreadUsage | null | undefined,
+): ReadonlyArray<ThreadUsageRow> {
+  const rows: ThreadUsageRow[] = [];
+
+  const turn = usage?.latestTurnTokenUsage ?? null;
+  // Same source order as the chat context meter: the latest turn first, then the
+  // stored provider context snapshot, which can be stale after compaction.
+  const context =
+    turn !== null
+      ? { usedTokens: turn.usedTokens, maxTokens: turn.maxTokens }
+      : (usage?.providerThread?.contextUsage ?? null);
+  if (context !== null) {
+    const used = formatContextWindowTokens(context.usedTokens);
+    const max = context.maxTokens;
+    rows.push(
+      max === undefined || max === null || max <= 0
+        ? { label: "Context", value: `${used} tokens` }
+        : {
+            label: "Context",
+            value: `${used} / ${formatContextWindowTokens(max)} (${Math.min(100, Math.round((context.usedTokens / max) * 100))}%)`,
+          },
+    );
+  }
+
+  if (turn !== null) {
+    rows.push({
+      label: "Last turn",
+      value: `${formatContextWindowTokens(turn.usedTokens)} tokens`,
+    });
+    if (turn.inputTokens !== undefined) {
+      rows.push({ label: "Input", value: formatContextWindowTokens(turn.inputTokens) });
+    }
+    if (turn.outputTokens !== undefined) {
+      rows.push({ label: "Output", value: formatContextWindowTokens(turn.outputTokens) });
+    }
+    if (turn.cachedInputTokens !== undefined) {
+      rows.push({
+        label: "Cached input",
+        value: formatContextWindowTokens(turn.cachedInputTokens),
+      });
+    }
+  }
+
+  const totals = usage?.totals ?? null;
+  if (totals !== null) {
+    rows.push({ label: "Input, all turns", value: formatContextWindowTokens(totals.inputTokens) });
+    rows.push({
+      label: "Output, all turns",
+      value: formatContextWindowTokens(totals.outputTokens),
+    });
+    rows.push({ label: "Turns", value: String(totals.turnCount) });
+  }
+
+  return rows;
+}
+
+/**
+ * One section per account, each listing its models. A model with no reported name reads
+ * "Not reported" rather than a guess.
+ */
+export function deriveThreadUsageAccounts(
+  usage: OrchestrationV2ThreadUsage | null | undefined,
+): ReadonlyArray<ThreadUsageAccount> {
+  return (usage?.byAccount ?? []).map((account) => ({
+    name: account.label,
+    models: account.models.map((model) => ({
+      name: model.model === null ? "Not reported" : formatModelSlugName(model.model),
+      info: `${formatContextWindowTokens(model.inputTokens)} in · ${formatContextWindowTokens(model.outputTokens)} out · ${model.turnCount} turns`,
+    })),
+  }));
+}

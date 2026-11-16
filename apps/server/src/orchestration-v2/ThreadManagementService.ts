@@ -32,6 +32,7 @@ import {
   type OrchestrationV2ThreadShellSnapshot,
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2ThreadTranscript,
+  type OrchestrationV2ThreadUsage,
   type OrchestrationV2TurnItem,
   ProjectId,
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
@@ -70,6 +71,7 @@ import { DispatchModeLimit, exceededDispatchModeLimit } from "./DispatchModeLimi
 import { projectTurnItemForDetail } from "./WireProjection.ts";
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import { summarizeThreadUsage } from "./threadUsageSummary.ts";
 import { ThreadWorktreeRestore } from "../workspace/restoreMissingWorktree.ts";
 
 export type ThreadManagementSendMode = "auto" | "queue" | "steer" | "restart";
@@ -414,6 +416,9 @@ export interface ThreadManagementServiceShape {
   readonly getThreadProjection: (
     threadId: ThreadId,
   ) => Effect.Effect<OrchestrationV2ThreadProjection, Orchestrator.OrchestratorV2Error>;
+  readonly getThreadUsage: (
+    threadId: ThreadId,
+  ) => Effect.Effect<OrchestrationV2ThreadUsage, Orchestrator.OrchestratorV2Error>;
   readonly getCheckpointContext: Orchestrator.OrchestratorV2["Service"]["getCheckpointContext"];
   readonly getThreadSnapshot: Orchestrator.OrchestratorV2["Service"]["getThreadSnapshot"];
   readonly getThreadTranscript: (
@@ -698,6 +703,57 @@ const make = Effect.gen(function* () {
     ensureProjectionTranscript(threadId).pipe(
       Effect.andThen(orchestrator.getThreadProjection(threadId)),
     );
+
+  // Legacy transcript hydration writes only messages, so usage reads skip it.
+  const getThreadUsage = Effect.fn("ThreadManagementService.getThreadUsage")(function* (
+    threadId: ThreadId,
+  ) {
+    const { thread } = yield* orchestrator.getThreadRecords(threadId, []);
+    const activeIds =
+      thread.activeProviderThreadId === null ? undefined : [thread.activeProviderThreadId];
+    const { providerThreads, providerTurns } = yield* orchestrator.getThreadRecords(
+      threadId,
+      ["providerThreads", "providerTurns"],
+      {
+        providerThreadIds: activeIds ?? [],
+        // No active provider thread: read every turn of this thread, as the chat view does.
+        ...(activeIds === undefined ? {} : { providerTurnThreadIds: activeIds }),
+        latestProviderTurnUsageOnly: true,
+      },
+    );
+    const providerThread = providerThreads[0];
+    const everything = yield* orchestrator.getThreadRecords(threadId, [
+      "providerThreads",
+      "providerTurns",
+    ]);
+    const instanceByThread = new Map(
+      everything.providerThreads.map((thread) => [thread.id, thread.providerInstanceId] as const),
+    );
+    // Labels only: a settings read that fails falls back to instance ids, not a failed hover.
+    const settings = yield* serverSettings.getSettings.pipe(Effect.orElseSucceed(() => undefined));
+    const summary = summarizeThreadUsage({
+      turns: everything.providerTurns,
+      instanceByThread,
+      labelFor: (instance) =>
+        instance === null
+          ? "Unknown account"
+          : (settings?.providerInstances?.[instance]?.displayName ?? instance),
+    });
+    return {
+      threadId,
+      providerThread:
+        providerThread === undefined
+          ? null
+          : {
+              id: providerThread.id,
+              contextUsage: providerThread.contextUsage ?? null,
+              updatedAt: providerThread.updatedAt,
+            },
+      latestTurnTokenUsage: providerTurns[0]?.tokenUsage ?? null,
+      totals: summary.totals,
+      byAccount: summary.byAccount,
+    } satisfies OrchestrationV2ThreadUsage;
+  });
 
   const getCheckpointContext: ThreadManagementServiceShape["getCheckpointContext"] = (threadId) =>
     ensureProjectionTranscript(threadId).pipe(
@@ -1741,6 +1797,7 @@ const make = Effect.gen(function* () {
       },
     ),
     getThreadProjection,
+    getThreadUsage,
     getCheckpointContext,
     getThreadSnapshot,
     getThreadTranscript,
