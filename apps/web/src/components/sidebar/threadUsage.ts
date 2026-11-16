@@ -1,4 +1,5 @@
 import type { OrchestrationV2ThreadUsage } from "@t3tools/contracts";
+import { formatModelSlugName } from "@t3tools/shared/model";
 
 import { formatContextWindowTokens } from "~/lib/contextWindow";
 
@@ -7,10 +8,20 @@ export interface ThreadUsageRow {
   readonly value: string;
 }
 
+export interface ThreadUsageModelLine {
+  readonly name: string;
+  readonly info: string;
+}
+
+export interface ThreadUsageAccount {
+  readonly name: string;
+  readonly models: ReadonlyArray<ThreadUsageModelLine>;
+}
+
 /**
  * Rows for the sidebar hover card. Empty when the thread has no usage to show,
- * so the card renders without a usage block. Cost and cumulative totals are not
- * included because `orchestration.getThreadUsage` does not return them.
+ * so the card renders without a usage block. Cost is not included because
+ * `orchestration.getThreadUsage` does not return it.
  */
 export function deriveThreadUsageRows(
   usage: OrchestrationV2ThreadUsage | null | undefined,
@@ -65,18 +76,22 @@ export function deriveThreadUsageRows(
     });
     rows.push({ label: "Turns", value: String(totals.turnCount) });
   }
-  for (const account of usage?.byAccount ?? []) {
-    rows.push({
-      label: `Account: ${account.label}`,
-      value: `${formatContextWindowTokens(account.inputTokens)} in · ${formatContextWindowTokens(account.outputTokens)} out · ${account.turnCount} turns`,
-    });
-  }
-  for (const model of usage?.byModel ?? []) {
-    rows.push({
-      label: `Model: ${model.model ?? "not reported"}`,
-      value: `${formatContextWindowTokens(model.inputTokens)} in · ${formatContextWindowTokens(model.outputTokens)} out · ${model.turnCount} turns`,
-    });
-  }
 
   return rows;
+}
+
+/**
+ * One section per account, each listing its models. A model with no reported name reads
+ * "Not reported" rather than a guess.
+ */
+export function deriveThreadUsageAccounts(
+  usage: OrchestrationV2ThreadUsage | null | undefined,
+): ReadonlyArray<ThreadUsageAccount> {
+  return (usage?.byAccount ?? []).map((account) => ({
+    name: account.label,
+    models: account.models.map((model) => ({
+      name: model.model === null ? "Not reported" : formatModelSlugName(model.model),
+      info: `${formatContextWindowTokens(model.inputTokens)} in · ${formatContextWindowTokens(model.outputTokens)} out · ${model.turnCount} turns`,
+    })),
+  }));
 }

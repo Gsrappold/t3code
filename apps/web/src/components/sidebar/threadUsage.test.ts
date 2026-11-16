@@ -2,9 +2,10 @@ import { ProviderThreadId, ThreadId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
-import { deriveThreadUsageRows } from "./threadUsage";
+import { deriveThreadUsageAccounts, deriveThreadUsageRows } from "./threadUsage";
 
 const updatedAt = "2026-11-16T00:00:00.000Z";
+const noAccounts = { byAccount: [] };
 
 describe("deriveThreadUsageRows", () => {
   it("returns no rows when there is no usage", () => {
@@ -16,8 +17,7 @@ describe("deriveThreadUsageRows", () => {
         providerThread: null,
         latestTurnTokenUsage: null,
         totals: null,
-        byModel: [],
-        byAccount: [],
+        ...noAccounts,
       }),
     ).toEqual([]);
   });
@@ -32,8 +32,7 @@ describe("deriveThreadUsageRows", () => {
       },
       latestTurnTokenUsage: null,
       totals: null,
-      byModel: [],
-      byAccount: [],
+      ...noAccounts,
     });
     expect(rows).toEqual([{ label: "Context", value: "50k / 200k (25%)" }]);
   });
@@ -48,8 +47,7 @@ describe("deriveThreadUsageRows", () => {
       },
       latestTurnTokenUsage: null,
       totals: null,
-      byModel: [],
-      byAccount: [],
+      ...noAccounts,
     });
     expect(rows).toEqual([{ label: "Context", value: "1.5k tokens" }]);
   });
@@ -65,8 +63,7 @@ describe("deriveThreadUsageRows", () => {
         updatedAt,
       },
       totals: null,
-      byModel: [],
-      byAccount: [],
+      ...noAccounts,
     });
     expect(rows).toEqual([
       { label: "Context", value: "12k tokens" },
@@ -84,14 +81,9 @@ describe("deriveThreadUsageRows", () => {
         contextUsage: { usedTokens: 20_000, maxTokens: 200_000 },
         updatedAt: DateTime.makeUnsafe(updatedAt),
       },
-      latestTurnTokenUsage: {
-        usedTokens: 150_000,
-        maxTokens: 200_000,
-        updatedAt,
-      },
+      latestTurnTokenUsage: { usedTokens: 150_000, maxTokens: 200_000, updatedAt },
       totals: null,
-      byModel: [],
-      byAccount: [],
+      ...noAccounts,
     });
     expect(rows[0]).toEqual({ label: "Context", value: "150k / 200k (75%)" });
   });
@@ -102,8 +94,7 @@ describe("deriveThreadUsageRows", () => {
       providerThread: null,
       latestTurnTokenUsage: { usedTokens: 220_000, maxTokens: 200_000, updatedAt },
       totals: null,
-      byModel: [],
-      byAccount: [],
+      ...noAccounts,
     });
     expect(over[0]).toEqual({ label: "Context", value: "220k / 200k (100%)" });
 
@@ -112,8 +103,7 @@ describe("deriveThreadUsageRows", () => {
       providerThread: null,
       latestTurnTokenUsage: { usedTokens: 1_000, maxTokens: 0, updatedAt },
       totals: null,
-      byModel: [],
-      byAccount: [],
+      ...noAccounts,
     });
     expect(zero[0]).toEqual({ label: "Context", value: "1k tokens" });
   });
@@ -124,8 +114,7 @@ describe("deriveThreadUsageRows", () => {
       providerThread: null,
       latestTurnTokenUsage: null,
       totals: { turnCount: 3, inputTokens: 3_000, cachedInputTokens: 0, outputTokens: 600 },
-      byModel: [],
-      byAccount: [],
+      ...noAccounts,
     });
     expect(rows).toEqual([
       { label: "Input, all turns", value: "3k" },
@@ -133,22 +122,15 @@ describe("deriveThreadUsageRows", () => {
       { label: "Turns", value: "3" },
     ]);
   });
+});
 
-  it("adds one row per account and per model", () => {
-    const rows = deriveThreadUsageRows({
+describe("deriveThreadUsageAccounts", () => {
+  it("lists each account with its models, using readable model names", () => {
+    const accounts = deriveThreadUsageAccounts({
       threadId: ThreadId.make("thread-1"),
       providerThread: null,
       latestTurnTokenUsage: null,
       totals: { turnCount: 3, inputTokens: 3_000, cachedInputTokens: 0, outputTokens: 600 },
-      byModel: [
-        {
-          model: "opus",
-          turnCount: 2,
-          inputTokens: 2_000,
-          cachedInputTokens: 0,
-          outputTokens: 400,
-        },
-      ],
       byAccount: [
         {
           providerInstanceId: null,
@@ -157,14 +139,37 @@ describe("deriveThreadUsageRows", () => {
           inputTokens: 3_000,
           cachedInputTokens: 0,
           outputTokens: 600,
+          models: [
+            {
+              model: "claude-opus-5-5",
+              turnCount: 2,
+              inputTokens: 2_000,
+              cachedInputTokens: 0,
+              outputTokens: 400,
+            },
+            {
+              model: null,
+              turnCount: 1,
+              inputTokens: 1_000,
+              cachedInputTokens: 0,
+              outputTokens: 200,
+            },
+          ],
         },
       ],
     });
-    expect(rows).toEqual(
-      expect.arrayContaining([
-        { label: "Account: Work", value: "3k in · 600 out · 3 turns" },
-        { label: "Model: opus", value: "2k in · 400 out · 2 turns" },
-      ]),
-    );
+    expect(accounts).toEqual([
+      {
+        name: "Work",
+        models: [
+          { name: "Claude Opus 5.5", info: "2k in · 400 out · 2 turns" },
+          { name: "Not reported", info: "1k in · 200 out · 1 turns" },
+        ],
+      },
+    ]);
+  });
+
+  it("returns no accounts when there is no usage", () => {
+    expect(deriveThreadUsageAccounts(null)).toEqual([]);
   });
 });

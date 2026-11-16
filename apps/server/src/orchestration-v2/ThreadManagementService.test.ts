@@ -1142,18 +1142,6 @@ it.effect.each([
       totals: usage
         ? { turnCount: 3, inputTokens: 3_000, cachedInputTokens: 0, outputTokens: 600 }
         : null,
-      // The mock turns report no model, and the mock threads have no provider instance.
-      byModel: usage
-        ? [
-            {
-              model: null,
-              turnCount: 3,
-              inputTokens: 3_000,
-              cachedInputTokens: 0,
-              outputTokens: 600,
-            },
-          ]
-        : [],
       byAccount: usage
         ? [
             {
@@ -1163,6 +1151,15 @@ it.effect.each([
               inputTokens: 3_000,
               cachedInputTokens: 0,
               outputTokens: 600,
+              models: [
+                {
+                  model: null,
+                  turnCount: 3,
+                  inputTokens: 3_000,
+                  cachedInputTokens: 0,
+                  outputTokens: 600,
+                },
+              ],
             },
           ]
         : [],
@@ -1238,15 +1235,6 @@ it.effect(
           updatedAt: "2026-01-01T00:01:00Z",
         },
         totals: { turnCount: 2, inputTokens: 10_000, cachedInputTokens: 0, outputTokens: 500 },
-        byModel: [
-          {
-            model: null,
-            turnCount: 2,
-            inputTokens: 10_000,
-            cachedInputTokens: 0,
-            outputTokens: 500,
-          },
-        ],
         byAccount: [
           {
             providerInstanceId: null,
@@ -1255,6 +1243,15 @@ it.effect(
             inputTokens: 10_000,
             cachedInputTokens: 0,
             outputTokens: 500,
+            models: [
+              {
+                model: null,
+                turnCount: 2,
+                inputTokens: 10_000,
+                cachedInputTokens: 0,
+                outputTokens: 500,
+              },
+            ],
           },
         ],
       });

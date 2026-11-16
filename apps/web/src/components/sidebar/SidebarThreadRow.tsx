@@ -1,7 +1,7 @@
 import { useAtomMount, useAtomValue } from "@effect/atom-react";
 import { asLaunchingThread } from "@t3tools/client-runtime/state/thread-inbox";
 import { ThreadHoverCard, ThreadHoverCardPopup } from "../ThreadHoverCard";
-import { deriveThreadUsageRows } from "./threadUsage";
+import { deriveThreadUsageAccounts, deriveThreadUsageRows } from "./threadUsage";
 import { getThreadUsage } from "@t3tools/client-runtime/operations";
 import {
   createEnvironmentRpcQueryAtomFamily,
@@ -262,13 +262,25 @@ function ThreadUsageBlock({
     useAtomValue(threadUsageQuery({ environmentId, input: { threadId } })),
   );
   const rows = deriveThreadUsageRows(usage);
-  if (rows.length === 0) return null;
+  const accounts = deriveThreadUsageAccounts(usage);
+  if (rows.length === 0 && accounts.length === 0) return null;
   return (
     <div className="grid gap-1 border-t border-border/60 pt-2 pl-0.5">
       {rows.map((row) => (
         <div key={row.label} className="flex min-w-0 items-baseline justify-between gap-3">
           <span>{row.label}</span>
           <span className="tabular-nums text-foreground/75">{row.value}</span>
+        </div>
+      ))}
+      {accounts.map((account) => (
+        <div key={account.name} className="grid gap-1 pt-2">
+          <div className="font-medium text-foreground">Account: {account.name}</div>
+          {account.models.map((model) => (
+            <div key={model.name} className="grid gap-0.5 pl-3">
+              <span>{model.name}</span>
+              <span className="tabular-nums text-foreground/75">{model.info}</span>
+            </div>
+          ))}
         </div>
       ))}
     </div>

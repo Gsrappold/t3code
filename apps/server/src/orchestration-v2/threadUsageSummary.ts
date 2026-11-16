@@ -9,11 +9,13 @@ export interface UsageBucket {
 
 export interface ThreadUsageSummary {
   readonly totals: UsageBucket | null;
-  /** `model` is null for turns whose provider reported no model. Largest first. */
-  readonly byModel: ReadonlyArray<UsageBucket & { readonly model: string | null }>;
-  /** `providerInstanceId` is null for turns whose provider thread is unknown. Largest first. */
+  /** Largest first. Each account lists its models, largest first; `model` is null when unreported. */
   readonly byAccount: ReadonlyArray<
-    UsageBucket & { readonly providerInstanceId: ProviderInstanceId | null; readonly label: string }
+    UsageBucket & {
+      readonly providerInstanceId: ProviderInstanceId | null;
+      readonly label: string;
+      readonly models: ReadonlyArray<UsageBucket & { readonly model: string | null }>;
+    }
   >;
 }
 
@@ -29,22 +31,21 @@ interface TurnUsageInput {
     | undefined;
 }
 
-const emptyBucket = (): {
+type MutableBucket = {
   turnCount: number;
   inputTokens: number;
   cachedInputTokens: number;
   outputTokens: number;
-} => ({
+};
+
+const emptyBucket = (): MutableBucket => ({
   turnCount: 0,
   inputTokens: 0,
   cachedInputTokens: 0,
   outputTokens: 0,
 });
 
-const addTo = (
-  bucket: ReturnType<typeof emptyBucket>,
-  usage: NonNullable<TurnUsageInput["tokenUsage"]>,
-) => {
+const addTo = (bucket: MutableBucket, usage: NonNullable<TurnUsageInput["tokenUsage"]>) => {
   bucket.turnCount += 1;
   bucket.inputTokens += usage.inputTokens ?? 0;
   bucket.cachedInputTokens += usage.cachedInputTokens ?? 0;
@@ -56,8 +57,8 @@ const largestFirst = <T extends { readonly turnCount: number }>(
 ): ReadonlyArray<T> => [...items].toSorted((a, b) => b.turnCount - a.turnCount);
 
 /**
- * Sums each turn that reported usage, overall, by model and by account (the provider instance of
- * its provider thread). Turns without usage are skipped entirely.
+ * Sums each turn that reported usage: overall, and per account (the provider instance of its
+ * provider thread), with each account split by model. Turns without usage are skipped.
  */
 export function summarizeThreadUsage(input: {
   readonly turns: ReadonlyArray<TurnUsageInput>;
@@ -65,25 +66,37 @@ export function summarizeThreadUsage(input: {
   readonly labelFor: (instance: ProviderInstanceId | null) => string;
 }): ThreadUsageSummary {
   const totals = emptyBucket();
-  const byModel = new Map<string | null, ReturnType<typeof emptyBucket>>();
-  const byAccount = new Map<ProviderInstanceId | null, ReturnType<typeof emptyBucket>>();
+  const accounts = new Map<
+    ProviderInstanceId | null,
+    { bucket: MutableBucket; models: Map<string | null, MutableBucket> }
+  >();
   for (const turn of input.turns) {
     const usage = turn.tokenUsage;
     if (usage === undefined) continue;
     addTo(totals, usage);
-    const model = turn.model ?? null;
-    addTo(byModel.get(model) ?? byModel.set(model, emptyBucket()).get(model)!, usage);
     const instance = input.instanceByThread.get(turn.providerThreadId) ?? null;
-    addTo(byAccount.get(instance) ?? byAccount.set(instance, emptyBucket()).get(instance)!, usage);
+    let account = accounts.get(instance);
+    if (account === undefined) {
+      account = { bucket: emptyBucket(), models: new Map() };
+      accounts.set(instance, account);
+    }
+    addTo(account.bucket, usage);
+    const model = turn.model ?? null;
+    let modelBucket = account.models.get(model);
+    if (modelBucket === undefined) {
+      modelBucket = emptyBucket();
+      account.models.set(model, modelBucket);
+    }
+    addTo(modelBucket, usage);
   }
   return {
     totals: totals.turnCount === 0 ? null : totals,
-    byModel: largestFirst([...byModel].map(([model, bucket]) => ({ model, ...bucket }))),
     byAccount: largestFirst(
-      [...byAccount].map(([providerInstanceId, bucket]) => ({
+      [...accounts].map(([providerInstanceId, account]) => ({
         providerInstanceId,
         label: input.labelFor(providerInstanceId),
-        ...bucket,
+        ...account.bucket,
+        models: largestFirst([...account.models].map(([model, bucket]) => ({ model, ...bucket }))),
       })),
     ),
   };

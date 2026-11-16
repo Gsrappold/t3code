@@ -19,10 +19,10 @@ describe("summarizeThreadUsage", () => {
         instanceByThread: new Map(),
         labelFor: () => "x",
       }),
-    ).toStrictEqual({ totals: null, byModel: [], byAccount: [] });
+    ).toStrictEqual({ totals: null, byAccount: [] });
   });
 
-  it("splits by model and by account, largest first", () => {
+  it("groups by account, then by model within each account, largest first", () => {
     const summary = summarizeThreadUsage({
       turns: [
         { providerThreadId: thread("work"), model: "opus", tokenUsage: usage(100, 10, 40) },
@@ -42,11 +42,6 @@ describe("summarizeThreadUsage", () => {
       cachedInputTokens: 40,
       outputTokens: 36,
     });
-    expect(summary.byModel).toStrictEqual([
-      { model: "opus", turnCount: 2, inputTokens: 300, cachedInputTokens: 40, outputTokens: 30 },
-      { model: "haiku", turnCount: 1, inputTokens: 50, cachedInputTokens: 0, outputTokens: 5 },
-      { model: null, turnCount: 1, inputTokens: 1, cachedInputTokens: 0, outputTokens: 1 },
-    ]);
     expect(summary.byAccount).toStrictEqual([
       {
         providerInstanceId: instance("claude-work"),
@@ -55,6 +50,15 @@ describe("summarizeThreadUsage", () => {
         inputTokens: 300,
         cachedInputTokens: 40,
         outputTokens: 30,
+        models: [
+          {
+            model: "opus",
+            turnCount: 2,
+            inputTokens: 300,
+            cachedInputTokens: 40,
+            outputTokens: 30,
+          },
+        ],
       },
       {
         providerInstanceId: instance("claude-home"),
@@ -63,6 +67,9 @@ describe("summarizeThreadUsage", () => {
         inputTokens: 50,
         cachedInputTokens: 0,
         outputTokens: 5,
+        models: [
+          { model: "haiku", turnCount: 1, inputTokens: 50, cachedInputTokens: 0, outputTokens: 5 },
+        ],
       },
       {
         providerInstanceId: null,
@@ -71,6 +78,9 @@ describe("summarizeThreadUsage", () => {
         inputTokens: 1,
         cachedInputTokens: 0,
         outputTokens: 1,
+        models: [
+          { model: null, turnCount: 1, inputTokens: 1, cachedInputTokens: 0, outputTokens: 1 },
+        ],
       },
     ]);
   });

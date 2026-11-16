@@ -751,7 +751,6 @@ const make = Effect.gen(function* () {
             },
       latestTurnTokenUsage: providerTurns[0]?.tokenUsage ?? null,
       totals: summary.totals,
-      byModel: summary.byModel,
       byAccount: summary.byAccount,
     } satisfies OrchestrationV2ThreadUsage;
   });

@@ -3959,19 +3959,18 @@ export const OrchestrationV2ThreadUsage = Schema.Struct({
    * re-sent on each model request, so this is tokens processed, not tokens billed.
    */
   totals: Schema.NullOr(OrchestrationV2ThreadUsageBucket),
-  /** Same sums split by the model each turn's provider reported; null when none was reported. */
-  byModel: Schema.Array(
-    Schema.Struct({
-      ...OrchestrationV2ThreadUsageBucket.fields,
-      model: Schema.NullOr(TrimmedNonEmptyString),
-    }),
-  ),
-  /** Same sums split by the provider instance (account) that ran each turn. */
+  /** Same sums split by the provider instance (account) that ran each turn, then by model. */
   byAccount: Schema.Array(
     Schema.Struct({
       ...OrchestrationV2ThreadUsageBucket.fields,
       providerInstanceId: Schema.NullOr(ProviderInstanceId),
       label: Schema.String,
+      models: Schema.Array(
+        Schema.Struct({
+          ...OrchestrationV2ThreadUsageBucket.fields,
+          model: Schema.NullOr(TrimmedNonEmptyString),
+        }),
+      ),
     }),
   ),
 });
