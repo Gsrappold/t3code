@@ -65,6 +65,18 @@ export function deriveThreadUsageRows(
     });
     rows.push({ label: "Turns", value: String(totals.turnCount) });
   }
+  for (const account of usage?.byAccount ?? []) {
+    rows.push({
+      label: `Account: ${account.label}`,
+      value: `${formatContextWindowTokens(account.inputTokens)} in · ${formatContextWindowTokens(account.outputTokens)} out · ${account.turnCount} turns`,
+    });
+  }
+  for (const model of usage?.byModel ?? []) {
+    rows.push({
+      label: `Model: ${model.model ?? "not reported"}`,
+      value: `${formatContextWindowTokens(model.inputTokens)} in · ${formatContextWindowTokens(model.outputTokens)} out · ${model.turnCount} turns`,
+    });
+  }
 
   return rows;
 }

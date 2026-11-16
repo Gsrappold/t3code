@@ -3937,6 +3937,13 @@ export const OrchestrationV2GetThreadUsageInput = Schema.Struct({
 export type OrchestrationV2GetThreadUsageInput = typeof OrchestrationV2GetThreadUsageInput.Type;
 
 /** The inputs `deriveLatestContextWindowSnapshot` reads, without the thread's turns or items. */
+export const OrchestrationV2ThreadUsageBucket = Schema.Struct({
+  turnCount: NonNegativeInt,
+  inputTokens: NonNegativeInt,
+  cachedInputTokens: NonNegativeInt,
+  outputTokens: NonNegativeInt,
+});
+
 export const OrchestrationV2ThreadUsage = Schema.Struct({
   threadId: ThreadId,
   providerThread: Schema.NullOr(
@@ -3951,12 +3958,20 @@ export const OrchestrationV2ThreadUsage = Schema.Struct({
    * Sums over every provider turn of the thread that reported usage. Input includes context
    * re-sent on each model request, so this is tokens processed, not tokens billed.
    */
-  totals: Schema.NullOr(
+  totals: Schema.NullOr(OrchestrationV2ThreadUsageBucket),
+  /** Same sums split by the model each turn's provider reported; null when none was reported. */
+  byModel: Schema.Array(
     Schema.Struct({
-      turnCount: NonNegativeInt,
-      inputTokens: NonNegativeInt,
-      cachedInputTokens: NonNegativeInt,
-      outputTokens: NonNegativeInt,
+      ...OrchestrationV2ThreadUsageBucket.fields,
+      model: Schema.NullOr(TrimmedNonEmptyString),
+    }),
+  ),
+  /** Same sums split by the provider instance (account) that ran each turn. */
+  byAccount: Schema.Array(
+    Schema.Struct({
+      ...OrchestrationV2ThreadUsageBucket.fields,
+      providerInstanceId: Schema.NullOr(ProviderInstanceId),
+      label: Schema.String,
     }),
   ),
 });

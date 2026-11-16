@@ -71,6 +71,7 @@ import { DispatchModeLimit, exceededDispatchModeLimit } from "./DispatchModeLimi
 import { projectTurnItemForDetail } from "./WireProjection.ts";
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import { summarizeThreadUsage } from "./threadUsageSummary.ts";
 import { ThreadWorktreeRestore } from "../workspace/restoreMissingWorktree.ts";
 
 export type ThreadManagementSendMode = "auto" | "queue" | "steer" | "restart";
@@ -721,24 +722,23 @@ const make = Effect.gen(function* () {
       },
     );
     const providerThread = providerThreads[0];
-    const { providerTurns: allTurns } = yield* orchestrator.getThreadRecords(threadId, [
+    const everything = yield* orchestrator.getThreadRecords(threadId, [
+      "providerThreads",
       "providerTurns",
     ]);
-    const reported = allTurns.flatMap((turn) =>
-      turn.tokenUsage === undefined ? [] : [turn.tokenUsage],
+    const instanceByThread = new Map(
+      everything.providerThreads.map((thread) => [thread.id, thread.providerInstanceId] as const),
     );
-    const totals =
-      reported.length === 0
-        ? null
-        : {
-            turnCount: reported.length,
-            inputTokens: reported.reduce((sum, usage) => sum + (usage.inputTokens ?? 0), 0),
-            cachedInputTokens: reported.reduce(
-              (sum, usage) => sum + (usage.cachedInputTokens ?? 0),
-              0,
-            ),
-            outputTokens: reported.reduce((sum, usage) => sum + (usage.outputTokens ?? 0), 0),
-          };
+    // Labels only: a settings read that fails falls back to instance ids, not a failed hover.
+    const settings = yield* serverSettings.getSettings.pipe(Effect.orElseSucceed(() => undefined));
+    const summary = summarizeThreadUsage({
+      turns: everything.providerTurns,
+      instanceByThread,
+      labelFor: (instance) =>
+        instance === null
+          ? "Unknown account"
+          : (settings?.providerInstances?.[instance]?.displayName ?? instance),
+    });
     return {
       threadId,
       providerThread:
@@ -750,7 +750,9 @@ const make = Effect.gen(function* () {
               updatedAt: providerThread.updatedAt,
             },
       latestTurnTokenUsage: providerTurns[0]?.tokenUsage ?? null,
-      totals,
+      totals: summary.totals,
+      byModel: summary.byModel,
+      byAccount: summary.byAccount,
     } satisfies OrchestrationV2ThreadUsage;
   });
 
